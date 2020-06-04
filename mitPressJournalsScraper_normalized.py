@@ -20,6 +20,8 @@ class Article():
         self.fileName = None
         self.url = None
         self.doi = None
+        self.illegalTitleChars = None
+        self.illegalAuthorsChars = None
     
     def __repr__(self):
         return self.fileName
@@ -34,7 +36,9 @@ class Article():
         'Authors': self.authors,
         'FileName': self.fileName,
         'URL': self.url,
-        'DOI': self.doi
+        'DOI': self.doi,
+        'IllegalTitleChars': self.illegalTitleChars,
+        'IllegalAuthorsChars': self.illegalAuthorsChars
         }
 
     __str__=__repr__
@@ -47,6 +51,7 @@ chrome_options = webdriver.ChromeOptions()
 chrome_options.add_argument("--headless") 
 chrome_options.add_argument("--log-level=3") # shut up the driver
 driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=chrome_options)
+
 
 def validateURL(url):
     driver.get(url)
@@ -74,10 +79,6 @@ def getNames(soup):
         else:
             authorsAbbrv = authorsLastNames[0] + ' et al'
         
-        # filter out non-printable characters
-        # authorsAbbrv = ''.join(filter(lambda x: x in string.printable, authorsAbbrv))
-        # authorsFull = ''.join(filter(lambda x: x in string.printable, authorsFull))
-
         allAuthorsAbbrv.append(authorsAbbrv)
         allAuthorsFull.append(authorsFull)
     return (allAuthorsFull, allAuthorsAbbrv)
@@ -105,30 +106,50 @@ def getTitles(soup):
         else:
             titlesAbbrv.append(title)
 
-    # filter out non-printable characters
-    # titlesFull = ''.join(filter(lambda x: x in string.printable, titlesFull))
-    # titlesAbbrv = ''.join(filter(lambda x: x in string.printable, titlesAbbrv))
-    
     return (titlesFull, titlesAbbrv)
 
 articles = [] # output
+all_missed_illegal_chars = []
 volume = 1
 currentURL = f"https://www.mitpressjournals.org/toc/jocn/{volume}/1"
 soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
-while soup: # volumes
+while soup: # volume
     start_time = time.time()
     issue = 1
-    while soup: # issues
+    missed_illegal_chars_volume = []
+    while soup: # issue
+
         # get information
         urls = getUrls(soup)
         (allAuthorsFull, allAuthorsAbbrv)  = getNames(soup)
-        (titlesFull, titlesAbbrv)  = getTitles(soup)
+        (titlesFull, titlesAbbrv)  = getTitles(soup) 
         years = getYears(soup)
         dois = [''.join(["https://doi.org/", '/'.join(url.split('/')[-2:])]) for url in urls]
 
         # build article object
         data = zip(urls, allAuthorsFull, allAuthorsAbbrv, dois, titlesFull, titlesAbbrv, years)
         for url, authorsFull, authorsAbbrv, doi, titleFull, titleAbbrv, year in data:
+            
+            illegal_title_chars_bool = False
+            illegal_authors_chars_bool = False
+            
+
+            # second pass for illegal chars that were not transliterated
+            for element in [titleFull, titleAbbrv]:
+                for i, char in enumerate(element):
+                    if char not in string.printable:
+                        illegal_title_chars_bool = True
+                        missed_illegal_chars_volume.append(char)
+                        element[i] = '~'
+            for element in [authorsFull, authorsAbbrv]:
+                for i, char in enumerate(element):
+                    if char not in string.printable:
+                        illegal_authors_chars_bool = True
+                        missed_illegal_chars_volume.append(char)
+                        element[i] = '~'
+            
+            
+
             a = Article()
             a.journal = 'J of Cognitive Neuroscience'
             a.volume = volume
@@ -139,6 +160,9 @@ while soup: # volumes
             a.fileName = sanitize_filename(f'{authorsAbbrv}_{titleAbbrv}_{year}.pdf')
             a.url = url
             a.doi = doi
+            a.illegalTitleChars = illegal_title_chars_bool
+            a.illegalAuthorsChars = illegal_authors_chars_bool
+
 
             articleDict = a.asdict()
             articles.append(articleDict)
@@ -149,29 +173,18 @@ while soup: # volumes
     
     # get ready for next volume
     print('RUN TIME:' , round(time.time()- start_time, 1), 's')
+    print('MISSED ILLEGAL CHARS:', missed_illegal_chars_volume)
+    all_missed_illegal_chars.extend(missed_illegal_chars_volume)
     print(f'-------- reached end of volume {volume} ({years[0]}) ----------------')
     volume += 1
     soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
 
 
 print(f'reached end of {volume-1} volumes')
-
-df = pd.DataFrame(articles, columns=['Journal', 'Volume', 'Year', 'Issue', 'Title', 'Authors', 'FileName', 'URL', 'DOI'])
+print('All missed illegal chars:', all_missed_illegal_chars)
+columns = ['Journal', 'Volume', 'Year', 'Issue', 'Title', 'Authors', 'FileName', 'URL', 'DOI', 'IllegalTitleChars', 'IllegalAuthorsChars']
+df = pd.DataFrame(articles, columns=columns)
 df.to_csv(CSV_PATH, index=False)
 print('done!')
-
-# df = pd.DataFrame(data, columns=[Journal, Volume, Year, Issue, Title, Authors, FileName, URL, DOI])
-
-# EXAMPLE:
-# [J of Congnitive Neuroscience, 
-# 32, 
-# 2020, 
-# 6, 
-# Brain Regions Involved in Conceptual Retrieval in Sighted and Blind People,
-# Robert Bottini, Stefania Ferraro, Anna Nigri, Valeria Cuccarini, Maria Grazia Bruzzone, and Olivier Collingnon,
-# FileName,
-# URL,
-# https://doi.org/10.1162/jocn_a_01538
-# ]
 
 

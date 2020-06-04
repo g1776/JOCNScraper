@@ -41,7 +41,7 @@ class Article():
 
 # setup
 CHROMEDRIVER_PATH = r"C:\Users\grego\Documents\GitHub\JOCNScraper\chromedriver.exe"
-CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\removed_illegal_characters.csv'
+CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\with_illegal_characters.csv'
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_argument("--headless") 
 chrome_options.add_argument("--log-level=3") # shut up the driver
@@ -73,10 +73,6 @@ def getNames(soup):
         else:
             authorsAbbrv = authorsLastNames[0] + ' et al'
         
-        # filter out non-printable characters
-        # authorsAbbrv = ''.join(filter(lambda x: x in string.printable, authorsAbbrv))
-        # authorsFull = ''.join(filter(lambda x: x in string.printable, authorsFull))
-
         allAuthorsAbbrv.append(authorsAbbrv)
         allAuthorsFull.append(authorsFull)
     return (allAuthorsFull, allAuthorsAbbrv)
@@ -104,10 +100,6 @@ def getTitles(soup):
         else:
             titlesAbbrv.append(title)
 
-    # filter out non-printable characters
-    # titlesFull = ''.join(filter(lambda x: x in string.printable, titlesFull))
-    # titlesAbbrv = ''.join(filter(lambda x: x in string.printable, titlesAbbrv))
-    
     return (titlesFull, titlesAbbrv)
 
 articles = [] # output
