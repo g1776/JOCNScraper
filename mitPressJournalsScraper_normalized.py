@@ -6,6 +6,7 @@ from pathvalidate import sanitize_filename
 import time
 import pandas as pd
 import string
+from unidecode import unidecode
 
 
 class Article():
@@ -41,7 +42,7 @@ class Article():
 
 # setup
 CHROMEDRIVER_PATH = r"C:\Users\grego\Documents\GitHub\JOCNScraper\chromedriver.exe"
-CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\removed_illegal_characters.csv'
+CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\normalized_illegal_characters.csv'
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_argument("--headless") 
 chrome_options.add_argument("--log-level=3") # shut up the driver
@@ -64,8 +65,8 @@ def getNames(soup):
     allAuthorsFull = []
     authorListsHTML = soup.find_all('span', attrs={'class': 'articleEntryAuthorsLinks'})
     for authorList in authorListsHTML:
-        authorsLastNames = [HumanName(author.text).last for author in authorList.find_all('a', attrs={'class': 'entryAuthor linkable hlFld-ContribAuthor'})]
-        authorsFull = ''.join([string.text for string in authorList.find_all()])
+        authorsLastNames = [unidecode(HumanName(author.text).last) for author in authorList.find_all('a', attrs={'class': 'entryAuthor linkable hlFld-ContribAuthor'})]
+        authorsFull = ''.join([unidecode(string.text) for string in authorList.find_all()])
         if len(authorsLastNames) == 1:
             authorsAbbrv = authorsLastNames[0]
         elif len(authorsLastNames) == 2:
@@ -96,7 +97,7 @@ def getYears(soup):
     return years
 
 def getTitles(soup):
-    titlesFull =  [title.text for title in soup.findAll('span', attrs={'class': 'hlFld-Title'})]
+    titlesFull =  [unidecode(title.text) for title in soup.findAll('span', attrs={'class': 'hlFld-Title'})]
     titlesAbbrv = []
     for title in titlesFull:
         if len(title) > 150:
