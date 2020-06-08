@@ -6,7 +6,6 @@ from pathvalidate import sanitize_filename
 import time
 import pandas as pd
 import string
-from unidecode import unidecode
 
 
 class Article():
@@ -20,8 +19,6 @@ class Article():
         self.fileName = None
         self.url = None
         self.doi = None
-        self.illegalTitleChars = None
-        self.illegalAuthorsChars = None
     
     def __repr__(self):
         return self.fileName
@@ -36,9 +33,7 @@ class Article():
         'Authors': self.authors,
         'FileName': self.fileName,
         'URL': self.url,
-        'DOI': self.doi,
-        'IllegalTitleChars': self.illegalTitleChars,
-        'IllegalAuthorsChars': self.illegalAuthorsChars
+        'DOI': self.doi
         }
 
     __str__=__repr__
@@ -46,12 +41,11 @@ class Article():
 
 # setup
 CHROMEDRIVER_PATH = r"C:\Users\grego\Documents\GitHub\JOCNScraper\chromedriver.exe"
-CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\normalized_illegal_characters.csv'
+CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\with_illegal_characters.csv'
 chrome_options = webdriver.ChromeOptions()
 chrome_options.add_argument("--headless") 
 chrome_options.add_argument("--log-level=3") # shut up the driver
 driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=chrome_options)
-
 
 def validateURL(url):
     driver.get(url)
@@ -70,8 +64,8 @@ def getNames(soup):
     allAuthorsFull = []
     authorListsHTML = soup.find_all('span', attrs={'class': 'articleEntryAuthorsLinks'})
     for authorList in authorListsHTML:
-        authorsLastNames = [unidecode(HumanName(author.text).last) for author in authorList.find_all('a', attrs={'class': 'entryAuthor linkable hlFld-ContribAuthor'})]
-        authorsFull = ''.join([unidecode(string.text) for string in authorList.find_all()])
+        authorsLastNames = [HumanName(author.text).last for author in authorList.find_all('a', attrs={'class': 'entryAuthor linkable hlFld-ContribAuthor'})]
+        authorsFull = ''.join([string.text for string in authorList.find_all()])
         if len(authorsLastNames) == 1:
             authorsAbbrv = authorsLastNames[0]
         elif len(authorsLastNames) == 2:
@@ -98,7 +92,7 @@ def getYears(soup):
     return years
 
 def getTitles(soup):
-    titlesFull =  [unidecode(title.text) for title in soup.findAll('span', attrs={'class': 'hlFld-Title'})]
+    titlesFull =  [title.text for title in soup.findAll('span', attrs={'class': 'hlFld-Title'})]
     titlesAbbrv = []
     for title in titlesFull:
         if len(title) > 150:
@@ -109,47 +103,23 @@ def getTitles(soup):
     return (titlesFull, titlesAbbrv)
 
 articles = [] # output
-all_missed_illegal_chars = []
 volume = 1
 currentURL = f"https://www.mitpressjournals.org/toc/jocn/{volume}/1"
 soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
-while soup: # volume
+while soup: # volumes
     start_time = time.time()
     issue = 1
-    missed_illegal_chars_volume = []
-    while soup: # issue
-
+    while soup: # issues
         # get information
         urls = getUrls(soup)
         (allAuthorsFull, allAuthorsAbbrv)  = getNames(soup)
-        (titlesFull, titlesAbbrv)  = getTitles(soup) 
+        (titlesFull, titlesAbbrv)  = getTitles(soup)
         years = getYears(soup)
         dois = [''.join(["https://doi.org/", '/'.join(url.split('/')[-2:])]) for url in urls]
 
         # build article object
         data = zip(urls, allAuthorsFull, allAuthorsAbbrv, dois, titlesFull, titlesAbbrv, years)
         for url, authorsFull, authorsAbbrv, doi, titleFull, titleAbbrv, year in data:
-            
-            illegal_title_chars_bool = False
-            illegal_authors_chars_bool = False
-            
-
-            # second pass for illegal chars that were not transliterated
-            for element in [titleFull, titleAbbrv]:
-                for i, char in enumerate(element):
-                    if char not in string.printable:
-                        illegal_title_chars_bool = True
-                        missed_illegal_chars_volume.append(char)
-                        element[i] = '~'
-            for element in [authorsFull, authorsAbbrv]:
-                for i, char in enumerate(element):
-                    if char not in string.printable:
-                        illegal_authors_chars_bool = True
-                        missed_illegal_chars_volume.append(char)
-                        element[i] = '~'
-            
-            
-
             a = Article()
             a.journal = 'J of Cognitive Neuroscience'
             a.volume = volume
@@ -160,9 +130,6 @@ while soup: # volume
             a.fileName = sanitize_filename(f'{authorsAbbrv}_{titleAbbrv}_{year}.pdf')
             a.url = url
             a.doi = doi
-            a.illegalTitleChars = illegal_title_chars_bool
-            a.illegalAuthorsChars = illegal_authors_chars_bool
-
 
             articleDict = a.asdict()
             articles.append(articleDict)
@@ -173,17 +140,14 @@ while soup: # volume
     
     # get ready for next volume
     print('RUN TIME:' , round(time.time()- start_time, 1), 's')
-    print('MISSED ILLEGAL CHARS:', missed_illegal_chars_volume)
-    all_missed_illegal_chars.extend(missed_illegal_chars_volume)
     print(f'-------- reached end of volume {volume} ({years[0]}) ----------------')
     volume += 1
     soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
 
 
 print(f'reached end of {volume-1} volumes')
-print('All missed illegal chars:', all_missed_illegal_chars)
-columns = ['Journal', 'Volume', 'Year', 'Issue', 'Title', 'Authors', 'FileName', 'URL', 'DOI', 'IllegalTitleChars', 'IllegalAuthorsChars']
-df = pd.DataFrame(articles, columns=columns)
+
+df = pd.DataFrame(articles, columns=['Journal', 'Volume', 'Year', 'Issue', 'Title', 'Authors', 'FileName', 'URL', 'DOI'])
 df.to_csv(CSV_PATH, index=False)
 print('done!')
 
