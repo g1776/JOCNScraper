@@ -23,7 +23,7 @@ class Article():
         self.doi = None
         self.illegalTitleChars = None
         self.illegalAuthorsChars = None
-        self.downloadFlag = None
+        self.downloadFlag = None # MATCH FOUND, MATCH NOT FOUND, DOWNLOAD
     
     def __repr__(self):
         return self.fileName
@@ -41,7 +41,7 @@ class Article():
         'DOI': self.doi,
         'IllegalTitleChars': self.illegalTitleChars,
         'IllegalAuthorsChars': self.illegalAuthorsChars,
-        'DownloadFlag': self.downloadFlag
+        'DownloadFlag': self.downloadFlag  
         }
 
     __str__=__repr__
@@ -63,7 +63,7 @@ class JournalScraper():
 
         #### helper functions that are called for each issue #######
 
-        def validateURL(self, url):
+        def validateURL(url):
             self.driver.get(url)
             html = self.driver.page_source
             soup = BeautifulSoup(html, 'html.parser')
@@ -73,7 +73,7 @@ class JournalScraper():
             return soup
 
 
-        def getNames(self, soup):
+        def getNames(soup):
             '''
                 returns (allAuthorsFull, allAuthorsAbbrv)
             '''
@@ -96,11 +96,11 @@ class JournalScraper():
             return (allAuthorsFull, allAuthorsAbbrv)
 
 
-        def getUrls(self, soup):
+        def getUrls(soup):
             return [''.join([r"https://www.mitpressjournals.org", pdfLink['href']]) for pdfLink in soup.find_all('a', attrs={'class': 'ref nowrap pdf'})]
 
 
-        def getYears(self, soup):
+        def getYears(soup):
             years = []
             for issueInfo in soup.findAll('span', attrs={'class': 'issueInfo'}):
                 issueInfo_list = issueInfo.text.split()
@@ -112,7 +112,7 @@ class JournalScraper():
             return years
 
 
-        def getTitles(self, soup):
+        def getTitles(soup):
             # find and transiliterate the titles
             titlesFull =  [unidecode(title.text) for title in soup.findAll('span', attrs={'class': 'hlFld-Title'})]
             titlesAbbrv = []
@@ -125,37 +125,40 @@ class JournalScraper():
             return (titlesFull, titlesAbbrv)
 
         
-        def issueExists(self, cwd, issue):
+        def issueExists(cwd, issue):
             issue_names = [f.name for f in os.scandir(cwd) if f.is_dir()]
             return bool(issue in issue_names)
 
-        def getCurrentIssuePDFs(self, cwd, issue):
+        def getCurrentIssuePDFs(cwd, issue):
             issue_names = [f.name for f in os.scandir(cwd) if f.is_dir()]
             currentIssue_index = issue_names.index(issue)
             issue_paths = [f.path for f in os.scandir(cwd) if f.is_dir()]
             currentIssue_path = issue_paths[currentIssue_index]
 
             # get all pdfs in current issue
-            return [f.path for f in os.scandir(cwd) if not f.is_dir() and f.path.split('.')[-1] =='pdf']
+            extensions = ['pdf']
+            return [f.name for f in os.scandir(currentIssue_path) if not f.is_dir() and f.path.split('.')[-1] in extensions]
         
-        def fileFound(self, theFile, cwd, issue):
-            currentIssuePDFs = getCurrentIssuePDFs(cwd, issue)
+        def fileFound(theFile, cwd, issue):
+            currentIssuePDFs_names = getCurrentIssuePDFs(cwd, issue)
             # logic to compare files
-            return True
+            return bool(theFile.fileName in currentIssuePDFs_names)
 
-        def isNewestIssue(self, cwd, issue):
+        def isNewestIssue(cwd, issue):
             issue_names = [f.name for f in os.scandir(cwd) if f.is_dir()]
             return not bool(True in [issue < an_issue for an_issue in issue_names])
 
         ###### main looping logic ########
 
         cwd = root
+        volume_dirs = [f for f in os.scandir(cwd) if f.is_dir()]
         articles = [] # output
         all_missed_illegal_chars = []
         volume = 1
-        currentURL = f"https://www.mitpressjournals.org/toc/jocn/{volume}/1"
         soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
         while soup: # volume
+            # update cwd
+            cwd = [vol.path for vol in volume_dirs if vol.name == str(volume)][0]
             if str(volume) not in lockedVolumes:
                 start_time = time.time()
                 issue = 1
