@@ -55,7 +55,7 @@ class JournalScraper():
     chrome_options.add_argument("--log-level=3") # shut up the driver
     driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=chrome_options)
 
-    def scrape_compare_MITPress(self,  root='', lockedVolumes=[]):
+    def scrape_compare_MITPress(self, root, lockedVolumes=[], startVolume='1989'):
         '''
         root: path to root of directory to compare found files against
         lockedVolumes: list of strings defining which volumes to ignore
@@ -126,11 +126,11 @@ class JournalScraper():
 
         
         def issueExists(cwd, issue):
-            issue_names = [f.name for f in os.scandir(cwd) if f.is_dir()]
+            issue_names = [f.name.split()[-1] for f in os.scandir(cwd) if f.is_dir()]
             return bool(issue in issue_names)
 
         def getCurrentIssuePDFs(cwd, issue):
-            issue_names = [f.name for f in os.scandir(cwd) if f.is_dir()]
+            issue_names = [f.name.split()[-1] for f in os.scandir(cwd) if f.is_dir()]
             currentIssue_index = issue_names.index(issue)
             issue_paths = [f.path for f in os.scandir(cwd) if f.is_dir()]
             currentIssue_path = issue_paths[currentIssue_index]
@@ -145,8 +145,16 @@ class JournalScraper():
             return bool(theFile.fileName in currentIssuePDFs_names)
 
         def isNewestIssue(cwd, issue):
-            issue_names = [f.name for f in os.scandir(cwd) if f.is_dir()]
-            return not bool(True in [issue < an_issue for an_issue in issue_names])
+            issue_names = [f.name.split()[-1] for f in os.scandir(cwd) if f.is_dir()]
+            return int(issue) > max([int(name) for name in issue_names])
+
+        def volumeExists(volume):
+            volume_names = [f.name.split()[-1] for f in os.scandir(root) if f.is_dir()]
+            return bool(volume in volume_names)
+
+        def isNewestVolume(volume):
+            volume_names = [f.name for f in os.scandir(root) if f.is_dir()]
+            return int(volume) > max([int(name) for name in volume_names])
 
         ###### main looping logic ########
 
@@ -154,25 +162,46 @@ class JournalScraper():
         volume_dirs = [f for f in os.scandir(cwd) if f.is_dir()]
         articles = [] # output
         all_missed_illegal_chars = []
-        volume = 1
+        volume = int(startVolume) - 1988
         soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
         while soup: # volume
-            # update cwd
-            cwd = [vol.path for vol in volume_dirs if vol.name == str(volume)][0]
-            if str(volume) not in lockedVolumes:
+
+            DOWNLOAD_FLAG_OVERRIDE = None
+            # does the volume not exist?
+            if not volumeExists(str(volume + 1988)):
+                print('new volume found:', str(volume + 1988))
+                # is it the newest issue?
+                if isNewestVolume(str(volume + 1988)):
+                    # file was not found, and is in most recent issue
+                    DOWNLOAD_FLAG_OVERRIDE = 'DOWNLOAD'
+                else:
+                    # human must review the potential new file
+                    DOWNLOAD_FLAG_OVERRIDE = 'NO MATCH FOUND'
+                print('APPLYING OVERRIDE SETTING:', DOWNLOAD_FLAG_OVERRIDE)
+            else:                  
+                # volume exists, update cwd
+                cwd = [vol.path for vol in volume_dirs if str(int(vol.name)-1988) == str(volume)][0]
+            
+            if str(volume+1988) not in lockedVolumes:
                 start_time = time.time()
+                
+                # counters for volume
                 issue = 1
                 missed_illegal_chars_volume = []
+                match_found_count = 0
+                no_match_found_count = 0
+                download_count = 0
+                
                 while soup: # issue
 
-                    # get information
+                    # get issue information
                     urls = getUrls(soup)
                     (allAuthorsFull, allAuthorsAbbrv)  = getNames(soup)
                     (titlesFull, titlesAbbrv)  = getTitles(soup) 
                     years = getYears(soup)
                     dois = [''.join(["https://doi.org/", '/'.join(url.split('/')[-2:])]) for url in urls]
 
-                    # build article object
+                    # build article objects
                     data = zip(urls, allAuthorsFull, allAuthorsAbbrv, dois, titlesFull, titlesAbbrv, years)
                     for url, authorsFull, authorsAbbrv, doi, titleFull, titleAbbrv, year in data:
                         
@@ -208,48 +237,64 @@ class JournalScraper():
                         a.illegalTitleChars = illegal_title_chars_bool
                         a.illegalAuthorsChars = illegal_authors_chars_bool
 
-                        
-                        ########## COMPARE TO EXISTING DIRECTORY ############
 
-                        # does the issue currently exist?
-                        if issueExists(cwd, str(issue)):
-                            if fileFound(a, cwd, issue):
-                                # file was found
-                                a.downloadFlag = 'MATCH FOUND'
-                                articleDict = a.asdict()
-                                articles.append(articleDict)
+                        ########## DETERMINE DOWNLOAD FLAG FOR ISSUE ############
+                        downloadFlag = None
+                        if DOWNLOAD_FLAG_OVERRIDE != None:
+                            downloadFlag = DOWNLOAD_FLAG_OVERRIDE
+                            if DOWNLOAD_FLAG_OVERRIDE == 'NO MATCH FOUND':
+                                no_match_found_count += 1
                             else:
-                                # human must review the potential new file
-                                a.downloadFlag = 'NO MATCH FOUND'
-                                articleDict = a.asdict()
-                                articles.append(articleDict) 
+                                download_count += 1
                         else:
-                            # is it the newest issue?
-                            if isNewestIssue(cwd, issue):
-                                # file was not found, and is in most recent issue
-                                a.downloadFlag = 'DOWNLOAD'
-                                articleDict = a.asdict()
-                                articles.append(articleDict)
+                            # does the issue currently exist?
+                            if issueExists(cwd, str(issue)):
+                                if fileFound(a, cwd, str(issue)):
+                                    # file was found
+                                    downloadFlag = 'MATCH FOUND'
+                                    match_found_count += 1
+                                else:
+                                    # human must review the potential new file
+                                    downloadFlag = 'NO MATCH FOUND'
+                                    no_match_found_count += 1
                             else:
-                                # human must review the potential new file
-                                a.downloadFlag = 'NO MATCH FOUND'
-                                articleDict = a.asdict()
-                                articles.append(articleDict) 
+                                # is it the newest issue?
+                                if isNewestIssue(cwd, str(issue)):
+                                    # file was not found, and is in most recent issue
+                                    downloadFlag = 'DOWNLOAD'
+                                    download_count += 1
+                                else:
+                                    # human must review the potential new file
+                                    downloadFlag = 'NO MATCH FOUND'
+                                    no_match_found_count += 1
+                        
 
+                        a.downloadFlag = downloadFlag
+
+                        
+                        
                     
-                    # finished issue
+                        articleDict = a.asdict()
+                        articles.append(articleDict)
+                    
+                    # move on to next issue
                     issue += 1
                     soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/{issue}")
                 
                 # finished volume
                 print('RUN TIME:' , round(time.time()- start_time, 1), 's')
+                print('ISSUES:', issue-1)
                 print('MISSED ILLEGAL CHARS:', missed_illegal_chars_volume)
+                print('MATCH FOUND COUNT:', match_found_count)
+                print('NO MATCH FOUND COUNT:', no_match_found_count)
+                print('DOWNLOAD COUNT:', download_count)
                 all_missed_illegal_chars.extend(missed_illegal_chars_volume)
                 print(f'-------- reached end of volume {volume} ({years[0]}) ----------------')
             
             else:
                 # locked volume
-                print(f'--------  volume {volume} has been locked. Skipping  ----------------')
+                print(f'--------  volume {volume+1988} has been locked. Skipping  ----------------')
+        
             volume += 1
             soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
 
@@ -262,11 +307,10 @@ class JournalScraper():
 
 
 scraper = JournalScraper()
-articles = scraper.scrape_compare_MITPress()
-CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\normalized_illegal_characters.csv'
-columns = ['Journal', 'Volume', 'Year', 'Issue', 'Title', 'Authors', 'FileName', 'URL', 'DOI', 'IllegalTitleChars', 'IllegalAuthorsChars, DownloadFlag']
+journalRoot = r'D:\ft\ft-j1\J Cognitive Neuroscience+'
+articles = scraper.scrape_compare_MITPress(root=journalRoot)
+CSV_PATH = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\MITPress_with_flags.csv'
+columns = ['Journal', 'Volume', 'Year', 'Issue', 'Title', 'Authors', 'FileName', 'URL', 'DOI', 'IllegalTitleChars', 'IllegalAuthorsChars', 'DownloadFlag']
 df = pd.DataFrame(articles, columns=columns)
 df.to_csv(CSV_PATH, index=False)
 print('done!')
-
-
