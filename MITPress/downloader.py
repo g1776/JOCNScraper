@@ -2,7 +2,6 @@ import pandas as pd
 import urllib.request
 
 def download(row, root):
-
     if row['DownloadFlag'] == 'DOWNLOAD':
         url = row['URL']
         volume = row['Volume']
@@ -23,7 +22,7 @@ def download(row, root):
             print(f'ERROR DOWNLOADING {url}')
             return 0
 
-download_csv = r'C:\Users\grego\Documents\GitHub\JOCNScraper\csvs\MITPress_with_flags.csv'
+download_csv = r'csvs\MITPress_with_flags.csv'
 journal_root = r'D:\ft\ft-j1\J Cognitive Neuroscience+'
 
 df = pd.read_csv(download_csv)
