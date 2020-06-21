@@ -15,7 +15,6 @@ def scrape():
     
     # define scrapers
     articles = []
-
     root_JOCN = r'D:\ft\ft-j1\J Cognitive Neuroscience+'
     articles.append(JOCN.scrape(root_JOCN, driver))
 
@@ -52,10 +51,10 @@ def download(row, root):
 
 #### driver code ####
 
-download_csv = r'output.csv'
+output = r'output.csv'
 journal_root = r'O:\ft\ft-j1\J Cognitive Neuroscience+'
 
-df = pd.read_csv(download_csv)
+df = pd.read_csv(output)
 for _, row in df.iterrows():
     if row['DownloadFlag'] == 'DOWNLOAD':
         download(row, journal_root)
