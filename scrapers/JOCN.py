@@ -114,7 +114,7 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
 
 
     if not os.path.exists(root):
-        raise BaseException('ERROR: Root directory does not exist!')
+        raise BaseException('ERROR: Target root directory does not exist!')
     
     ###### main looping logic ########
 
