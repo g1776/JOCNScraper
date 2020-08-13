@@ -19,23 +19,28 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
 
     #### helper functions that are called for each issue #######
 
+    # TO MODIFY
     def validateURL(url):
         driver.get(url)
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
-        theTitle = soup.find('title').text
-        if theTitle == 'Error | MIT Press Journals':
-            return None
-        return soup
 
+        # return if the url is an error page (deos this volume/issue exist?)
+        isValid = True
+        return isValid
 
+    # TO MODIFY
     def getNames(soup):
         '''
+            Get names of all authors within an issue
             returns (allAuthorsFull, allAuthorsAbbrv)
         '''
         allAuthorsAbbrv = []
         allAuthorsFull = []
+
+        # modify to tailor to HTML of site
         authorListsHTML = soup.find_all('span', attrs={'class': 'articleEntryAuthorsLinks'})
+
         for authorList in authorListsHTML:
             # find and transiliterate the author names
             authorsLastNames = [unidecode(HumanName(author.text).last) for author in authorList.find_all('a', attrs={'class': 'entryAuthor linkable hlFld-ContribAuthor'})]
@@ -45,13 +50,23 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
             allAuthorsFull.append(authorsFull)
         return (allAuthorsFull, allAuthorsAbbrv)
 
-
+    # TO MODIFY
     def getUrls(soup):
+        '''
+            returns list of urls that go the pdf download
+        '''
+
+        # modify to tailor to HTML of site
         return [''.join([r"https://www.mitpressjournals.org", pdfLink['href']]) for pdfLink in soup.find_all('a', attrs={'class': 'ref nowrap pdf'})]
 
-
+    # TO MODIFY
     def getYears(soup):
+        '''
+            returns list of years in issue
+        '''
         years = []
+
+        # modify to tailor to HTML of site
         for issueInfo in soup.findAll('span', attrs={'class': 'issueInfo'}):
             issueInfo_list = issueInfo.text.split()
             if '2001,' in issueInfo_list or '2002,' in issueInfo_list or '2003,' in issueInfo_list:
@@ -61,10 +76,16 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
             
         return years
 
-
+    # TO MODIFY
     def getTitles(soup):
-        # find and transiliterate the titles
-        titlesFull =  [unidecode(title.text) for title in soup.findAll('span', attrs={'class': 'hlFld-Title'})]
+        '''
+            returns tuple of 2 lists: (titlesFull, titlesAbbrv)
+        '''
+
+        # modify to tailor to HTML of site
+        titlesFull =  [unidecode(title.text) for title in soup.findAll('span', attrs={'class': 'hlFld-Title'})]  # find and transiliterate the titles
+        
+        # shorten titles for titlesAbbrv
         titlesAbbrv = []
         for title in titlesFull:
             if len(title) > 150:
@@ -74,11 +95,12 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
 
         return (titlesFull, titlesAbbrv)
 
-    
+    # LEAVE ALONE
     def issueExists(cwd, issue):
         issue_names = [f.name.split()[-1] for f in os.scandir(cwd) if f.is_dir()]
         return bool(issue in issue_names)
 
+    # LEAVE ALONE
     def getCurrentIssuePDFs(cwd, issue):
         issue_names = [f.name.split()[-1] for f in os.scandir(cwd) if f.is_dir()]
         currentIssue_index = issue_names.index(issue)
@@ -89,21 +111,25 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
         extensions = ['pdf']
         return [f.name for f in os.scandir(currentIssue_path) if not f.is_dir() and f.path.split('.')[-1] in extensions]
     
+    # LEAVE ALONE
     def fileFound(theFile, cwd, issue):
         currentIssuePDFs_names = getCurrentIssuePDFs(cwd, issue)
         # logic to compare files
         return bool(theFile.fileName in currentIssuePDFs_names)
 
+    # LEAVE ALONE
     def isNewestIssue(cwd, issue):
         issue_names = [f.name.split()[-1] for f in os.scandir(cwd) if f.is_dir()]
         if issue_names == []:
             return True
         return int(issue) > max([int(name) for name in issue_names])
 
+    # LEAVE ALONE
     def volumeExists(volume):
         volume_names = [f.name.split()[-1] for f in os.scandir(root) if f.is_dir()]
         return bool(volume in volume_names)
 
+    # LEAVE ALONE
     def isNewestVolume(volume):
         volume_names = [f.name for f in os.scandir(root) if f.is_dir()]
         if volume_names == []:
@@ -120,16 +146,22 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
     volume_dirs = [f for f in os.scandir(cwd) if f.is_dir()]
     articles = [] # output
     all_missed_illegal_chars = []
-    volume = int(startVolume) - 1988
+
+    # TO MODIFY
+    year_offset = 1988 # start 
+
+    volume = int(startVolume) - year_offset
+
+    # TO MODIFY
     soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
     while soup: # volume
 
         DOWNLOAD_FLAG_OVERRIDE = None
         # does the volume not exist?
-        if not volumeExists(str(volume + 1988)):
-            print('new volume found:', str(volume + 1988))
+        if not volumeExists(str(volume + year_offset)):
+            print('new volume found:', str(volume + year_offset))
             # is it the newest issue?
-            if isNewestVolume(str(volume + 1988)):
+            if isNewestVolume(str(volume + year_offset)):
                 # file was not found, and is in most recent issue
                 DOWNLOAD_FLAG_OVERRIDE = 'DOWNLOAD'
             else:
@@ -138,9 +170,9 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
             print('APPLYING OVERRIDE SETTING:', DOWNLOAD_FLAG_OVERRIDE)
         else:                  
             # volume exists, update cwd
-            cwd = [vol.path for vol in volume_dirs if str(int(vol.name)-1988) == str(volume)][0]
+            cwd = [vol.path for vol in volume_dirs if str(int(vol.name)-year_offset) == str(volume)][0]
         
-        if str(volume+1988) not in lockedVolumes:
+        if str(volume+year_offset) not in lockedVolumes:
             start_time = time.time()
             
             # counters for volume
@@ -183,6 +215,8 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
 
 
                     a = Article()
+
+                    # TO MODIFY
                     a.journal = 'J of Cognitive Neuroscience'
                     a.volume = volume
                     a.year = year
@@ -228,15 +262,14 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
                     
 
                     a.downloadFlag = downloadFlag
-
                     
-                    
-                
                     articleDict = a.asdict()
                     articles.append(articleDict)
                 
                 # move on to next issue
                 issue += 1
+
+                # TO MODIFY
                 soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/{issue}")
             
             # finished volume
@@ -251,15 +284,17 @@ def scrape(root, driver, lockedVolumes=[], startVolume='1989'):
         
         else:
             # locked volume
-            print(f'--------  volume {volume+1988} has been locked. Skipping  ----------------')
+            print(f'--------  volume {volume+year_offset} has been locked. Skipping  ----------------')
     
         volume += 1
+
+        # TO MODIFY
         soup = validateURL(f"https://www.mitpressjournals.org/toc/jocn/{volume}/1")
 
     # finished journal
     print(f'reached end of {volume-1} volumes')
     print('All missed illegal chars:', all_missed_illegal_chars)
-    print('done scraping JOCN!')
+    print('done scraping!')
 
     return articles
 
